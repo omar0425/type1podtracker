@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>About us — T1D Supply Failure Tracker</title>
+<link rel="icon" href="app/icons/icon-192.png">
+<meta name="theme-color" content="#0a4266">
+<style>
+  :root {
+    --blue: #0e5a8a; --blue-dark: #0a4266; --teal: #0f8a8a;
+    --bg: #f2f6f9; --card: #fff; --ink: #1c2b36; --muted: #5b7182; --line: #d8e2ea;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Segoe UI", system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--ink); line-height: 1.6; }
+  a { color: var(--blue); }
+  nav {
+    background: var(--blue-dark); color: #fff; padding: 12px 24px;
+    display: flex; align-items: center; gap: 22px; flex-wrap: wrap;
+  }
+  nav .brand { font-weight: 700; display: flex; align-items: center; gap: 8px; margin-right: auto; }
+  nav .brand img { width: 30px; height: 30px; border-radius: 7px; }
+  nav a { color: #dbe9f4; text-decoration: none; font-size: .92rem; }
+  nav a:hover { color: #fff; text-decoration: underline; }
+  main { max-width: 760px; margin: 0 auto; padding: 34px 18px 70px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 30px 32px; box-shadow: 0 1px 3px rgba(16,42,67,.06);
+  }
+  h1 { color: var(--blue-dark); font-size: 1.6rem; margin-bottom: 16px; }
+  p { margin-bottom: 14px; }
+  .photo {
+    float: right; width: min(280px, 45%); margin: 0 0 14px 20px;
+    border-radius: 12px; border: 1px solid var(--line); display: block;
+  }
+  .sig { font-style: italic; color: var(--muted); }
+  footer { text-align: center; color: var(--muted); font-size: .85rem; padding: 26px; border-top: 1px solid var(--line); clear: both; }
+</style>
+</head>
+<body>
+
+<nav>
+  <span class="brand"><img src="app/icons/icon-192.png" alt=""> T1D Supply Failure Tracker</span>
+  <a href="index.html">Home</a>
+  <a href="app/">Open the app</a>
+  <a href="contact.html">Contact</a>
+</nav>
+
+<main>
+  <div class="card">
+    <h1>Our story</h1>
+    <img class="photo" src="img/family.jpg" alt="Our family">
+    <p>Hi — I'm a parent of a kid with Type 1 diabetes. My daughter <b>Brooklyn</b> lives with T1D every single day, and like every T1D family we know, we've had our share of sensors that quit on day 4 and pods that screeched to a halt in the middle of the night.</p>
+    <p>Every one of those failed devices is <b>replaceable for free</b> — Dexcom and Insulet both stand behind their products. But only if you can find the serial number, the lot number, the dates&hellip; and that box went in the trash a week ago. We were losing replacements we were owed, simply because we didn't have the paperwork.</p>
+    <p>So I built this tracker: a 30-second habit at every site change that means we never lose that information again. It's free, it doesn't collect anything, and your family's data never leaves your own computer. If it saves your family even one $80 sensor, it did its job.</p>
+    <p>If you use a different pump or CGM and want it added, <a href="contact.html">send me a note</a> — I read every message.</p>
+    <p class="sig">&mdash; Brooklyn's parent, and the whole team behind Poddy &#129730;</p>
+  </div>
+</main>
+
+<footer>
+  <b>Independent &amp; unofficial.</b> Not affiliated with, endorsed by, or sponsored by Dexcom, Inc. or Insulet Corporation.
+  Dexcom, G6, and G7 are trademarks of Dexcom, Inc.; Omnipod and DASH are trademarks of Insulet Corporation, used only to
+  identify compatible products. This tool organizes records — it is not medical advice.
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,22 @@
+{
+  "name": "t1d-supply-tracker",
+  "version": "1.0.0",
+  "description": "Track Dexcom & Omnipod devices, log early failures, and build replacement claims.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node tests/test-app.js",
+    "test:site": "node tests/site-test.js",
+    "video": "node tests/demo-video.js",
+    "icons": "node tests/make-icons.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.22.2"
+  },
+  "devDependencies": {
+    "playwright": "^1.61.1"
+  }
+}

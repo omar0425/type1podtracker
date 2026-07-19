@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Contact — T1D Supply Failure Tracker</title>
+<link rel="icon" href="app/icons/icon-192.png">
+<meta name="theme-color" content="#0a4266">
+<style>
+  :root {
+    --blue: #0e5a8a; --blue-dark: #0a4266; --teal: #0f8a8a;
+    --bg: #f2f6f9; --card: #fff; --ink: #1c2b36; --muted: #5b7182; --line: #d8e2ea;
+    --green: #1a7f37; --red: #b3261e;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Segoe UI", system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--ink); line-height: 1.6; }
+  a { color: var(--blue); }
+  nav {
+    background: var(--blue-dark); color: #fff; padding: 12px 24px;
+    display: flex; align-items: center; gap: 22px; flex-wrap: wrap;
+  }
+  nav .brand { font-weight: 700; display: flex; align-items: center; gap: 8px; margin-right: auto; }
+  nav .brand img { width: 30px; height: 30px; border-radius: 7px; }
+  nav a { color: #dbe9f4; text-decoration: none; font-size: .92rem; }
+  nav a:hover { color: #fff; text-decoration: underline; }
+  main { max-width: 640px; margin: 0 auto; padding: 34px 18px 70px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 30px 32px; box-shadow: 0 1px 3px rgba(16,42,67,.06);
+  }
+  h1 { color: var(--blue-dark); font-size: 1.5rem; margin-bottom: 8px; }
+  .sub { color: var(--muted); font-size: .95rem; margin-bottom: 20px; }
+  label { display: block; font-size: .85rem; font-weight: 600; color: var(--muted); margin: 14px 0 4px; }
+  label .req { color: var(--red); }
+  input, textarea {
+    width: 100%; font: inherit; padding: 10px 12px;
+    border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink);
+  }
+  input:focus, textarea:focus { outline: 2px solid var(--teal); border-color: var(--teal); }
+  textarea { min-height: 110px; resize: vertical; }
+  .hp { position: absolute; left: -9999px; }
+  button {
+    margin-top: 18px; font: inherit; font-weight: 650; cursor: pointer;
+    border: none; border-radius: 10px; padding: 12px 26px;
+    background: var(--blue); color: #fff;
+  }
+  button:hover { background: var(--blue-dark); }
+  #result { margin-top: 14px; font-size: .92rem; display: none; padding: 10px 14px; border-radius: 8px; }
+  #result.ok { display: block; background: #e3f4e8; color: var(--green); }
+  #result.err { display: block; background: #fdecea; color: var(--red); }
+  footer { text-align: center; color: var(--muted); font-size: .85rem; padding: 26px; border-top: 1px solid var(--line); }
+</style>
+</head>
+<body>
+
+<nav>
+  <span class="brand"><img src="app/icons/icon-192.png" alt=""> T1D Supply Failure Tracker</span>
+  <a href="index.html">Home</a>
+  <a href="app/">Open the app</a>
+  <a href="about.html">About us</a>
+</nav>
+
+<main>
+  <div class="card">
+    <h1>&#128140; Use a different pump or CGM?</h1>
+    <p class="sub">Right now the tracker supports Dexcom G6/G7 and Omnipod 5/DASH. If your family uses something else — Medtronic, Tandem t:slim, Libre, iLet, anything — tell me below and I'll add it. Questions and ideas are welcome too.</p>
+    <form id="cform" onsubmit="return sendMsg(event)">
+      <label>Your name</label>
+      <input id="cName" maxlength="120" placeholder="Optional">
+      <label>Your email <span class="hint">(so I can tell you when it's added — optional)</span></label>
+      <input id="cEmail" type="email" maxlength="120" placeholder="you@example.com">
+      <label>Device you'd like added <span class="req">*</span></label>
+      <input id="cDevice" maxlength="120" required placeholder="e.g. Freestyle Libre 3, Tandem Mobi, Medtronic 780G">
+      <label>Anything else I should know? <span class="req">*</span></label>
+      <textarea id="cMsg" maxlength="2000" required placeholder="e.g. What the failure info looks like for this device, what the company asks for when you call…"></textarea>
+      <input class="hp" id="cWebsite" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <button type="submit" id="cSend">Send</button>
+      <div id="result"></div>
+    </form>
+  </div>
+</main>
+
+<footer>
+  <b>Independent &amp; unofficial.</b> Not affiliated with, endorsed by, or sponsored by Dexcom, Inc. or Insulet Corporation.
+  Dexcom, G6, and G7 are trademarks of Dexcom, Inc.; Omnipod and DASH are trademarks of Insulet Corporation, used only to
+  identify compatible products. This tool organizes records — it is not medical advice.
+</footer>
+
+<script>
+async function sendMsg(e) {
+  e.preventDefault();
+  const btn = document.getElementById('cSend'), out = document.getElementById('result');
+  btn.disabled = true; btn.textContent = 'Sending…'; out.className = '';
+  try {
+    const res = await fetch('/api/contact', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: document.getElementById('cName').value.trim(),
+        email: document.getElementById('cEmail').value.trim(),
+        device: document.getElementById('cDevice').value.trim(),
+        message: document.getElementById('cMsg').value.trim(),
+        website: document.getElementById('cWebsite').value
+      })
+    });
+    const d = await res.json();
+    if (d.ok) {
+      out.className = 'ok';
+      out.textContent = '✓ Got it — thank you! I read every request.';
+      document.getElementById('cform').reset();
+    } else {
+      out.className = 'err';
+      out.textContent = d.error || 'Something went wrong — please try again.';
+    }
+  } catch (err) {
+    out.className = 'err';
+    out.textContent = 'Could not send right now — please try again in a minute.';
+  }
+  btn.disabled = false; btn.textContent = 'Send';
+  return false;
+}
+</script>
+
+</body>
+</html>

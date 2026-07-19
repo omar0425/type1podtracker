@@ -1,0 +1,1137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>T1D Supply Failure Tracker</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<meta name="theme-color" content="#0a4266">
+<script src="xlsx.full.min.js"></script>
+<style>
+  :root {
+    --blue: #0e5a8a;
+    --blue-dark: #0a4266;
+    --teal: #0f8a8a;
+    --bg: #f2f6f9;
+    --card: #ffffff;
+    --ink: #1c2b36;
+    --muted: #5b7182;
+    --line: #d8e2ea;
+    --red: #b3261e;
+    --amber: #9a6700;
+    --green: #1a7f37;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.5;
+  }
+  header.app {
+    background: linear-gradient(135deg, var(--blue-dark), var(--blue) 60%, var(--teal));
+    color: #fff;
+    padding: 22px 28px;
+    position: relative;
+  }
+  header.app p { max-width: 700px; }
+  .mascot {
+    position: absolute; right: 28px; top: 50%; transform: translateY(-50%);
+    display: flex; align-items: center; gap: 12px;
+  }
+  .mascot svg { width: 92px; height: auto; display: block; filter: drop-shadow(0 3px 6px rgba(0,0,0,.25)); }
+  .bubble {
+    background: #fff; color: var(--ink); border-radius: 12px;
+    padding: 8px 12px; font-size: .8rem; max-width: 190px; line-height: 1.35;
+    position: relative; box-shadow: 0 2px 8px rgba(0,0,0,.18);
+  }
+  .bubble::after {
+    content: ""; position: absolute; right: -8px; top: 50%; transform: translateY(-50%);
+    border: 8px solid transparent; border-left-color: #fff; border-right: none;
+  }
+  @media (max-width: 1000px) {
+    .bubble { display: none; }
+    header.app { padding-right: 150px; } /* keep text clear of the mascot */
+  }
+  @media (max-width: 760px) {
+    .mascot { display: none; }
+    header.app { padding-right: 28px; }
+  }
+  .empty [data-pod] svg { width: 72px; height: auto; display: block; margin: 0 auto 8px; }
+  .modal { position: relative; }
+  .modal [data-pod] { position: absolute; top: 12px; right: 16px; }
+  .modal [data-pod] svg { width: 58px; height: auto; }
+  .modal h3, .modal .which { padding-right: 76px; } /* keep title clear of the sad pod */
+  @media (max-width: 480px) {
+    .modal [data-pod] { display: none; }
+    .modal h3, .modal .which { padding-right: 0; }
+  }
+  header.app h1 { font-size: 1.5rem; font-weight: 650; display: flex; align-items: center; gap: 10px; }
+  header.app .cross {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 34px; height: 34px; border-radius: 8px;
+    background: rgba(255,255,255,.18); font-size: 1.2rem;
+  }
+  header.app p { opacity: .92; font-size: .92rem; margin-top: 4px; }
+  main { max-width: 1080px; margin: 0 auto; padding: 20px 16px 60px; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px 20px;
+    margin-top: 18px;
+    box-shadow: 0 1px 3px rgba(16,42,67,.06);
+  }
+  .card h2 { font-size: 1.05rem; color: var(--blue-dark); margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+  .card h2 .step {
+    background: var(--blue); color: #fff; border-radius: 50%;
+    width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center;
+    font-size: .8rem; flex: none;
+  }
+  .card .sub { font-size: .85rem; color: var(--muted); margin: -6px 0 12px; }
+
+  /* Quick reference strip */
+  .refgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 720px) { .refgrid { grid-template-columns: 1fr; } }
+  .refbox { border: 1px solid var(--line); border-left: 4px solid var(--teal); border-radius: 8px; padding: 12px 14px; font-size: .88rem; }
+  .refbox.dex { border-left-color: var(--blue); }
+  .refbox strong.title { display: block; font-size: .95rem; margin-bottom: 4px; color: var(--blue-dark); }
+  .refbox ul { margin: 6px 0 0 18px; }
+  .refbox .phone { font-weight: 650; color: var(--blue-dark); }
+
+  /* Form */
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px 14px; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field.wide { grid-column: 1 / -1; }
+  label { font-size: .82rem; font-weight: 600; color: var(--muted); }
+  label .req { color: var(--red); }
+  input, select, textarea {
+    font: inherit; padding: 9px 10px;
+    border: 1px solid var(--line); border-radius: 8px;
+    background: #fff; color: var(--ink);
+  }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--teal); border-color: var(--teal); }
+  textarea { resize: vertical; min-height: 88px; }
+  .hint { font-size: .76rem; color: var(--muted); font-weight: 400; }
+
+  .btn {
+    font: inherit; font-weight: 600; cursor: pointer;
+    border: none; border-radius: 8px; padding: 10px 18px;
+    background: var(--blue); color: #fff;
+  }
+  .btn:hover { background: var(--blue-dark); }
+  .btn.secondary { background: #e8eff5; color: var(--blue-dark); }
+  .btn.secondary:hover { background: #d8e5ef; }
+  .btn.small { padding: 5px 10px; font-size: .8rem; }
+  .btn.danger { background: #fdecea; color: var(--red); }
+  .btn.danger:hover { background: #f9d9d5; }
+  .btn.solidred { background: var(--red); color: #fff; }
+  .btn.solidred:hover { background: #8f1e18; }
+  .btn.green { background: var(--green); }
+  .btn.green:hover { background: #14652c; }
+  .btn.ok { background: #e3f4e8; color: var(--green); }
+  .btn.ok:hover { background: #cfeeda; }
+  .btnrow { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; align-items: center; }
+
+  .warn {
+    margin-top: 10px; padding: 9px 12px; border-radius: 8px;
+    background: #fff7e0; border: 1px solid #eedca0; color: var(--amber); font-size: .85rem;
+    display: none;
+  }
+  #backupNag {
+    display: none; align-items: center; gap: 12px; flex-wrap: wrap;
+    margin-top: 18px; padding: 12px 16px; border-radius: 12px;
+    background: #fff7e0; border: 1px solid #eedca0; color: var(--amber); font-size: .88rem;
+  }
+  #backupNag .btn { padding: 7px 14px; font-size: .85rem; }
+
+  /* Tables */
+  .tablewrap { overflow-x: auto; }
+  table.inv { width: 100%; border-collapse: collapse; font-size: .87rem; }
+  table.inv th {
+    text-align: left; padding: 8px 10px; background: #eef4f8;
+    color: var(--blue-dark); border-bottom: 2px solid var(--line); white-space: nowrap;
+  }
+  table.inv td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.inv tr:hover td { background: #f7fafc; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: .76rem; font-weight: 600; white-space: nowrap; }
+  select.pillselect {
+    border: none; border-radius: 999px; padding: 4px 8px;
+    font-size: .78rem; font-weight: 600; cursor: pointer;
+  }
+  select.pillselect.not-submitted { background: #fdecea; color: var(--red); }
+  select.pillselect.submitted { background: #fff7e0; color: var(--amber); }
+  select.pillselect.replaced { background: #e3f4e8; color: var(--green); }
+  select.pillselect.denied { background: #ececec; color: #555; }
+  .scrollhint { display: none; }
+  .pill.in-use { background: #e1eefa; color: var(--blue-dark); }
+  .pill.completed { background: #ececec; color: #555; }
+  .pill.not-submitted { background: #fdecea; color: var(--red); }
+  .pill.submitted { background: #fff7e0; color: var(--amber); }
+  .pill.replaced { background: #e3f4e8; color: var(--green); }
+  .pill.denied { background: #ececec; color: #555; }
+  .devname { font-weight: 650; }
+  .mono { font-family: Consolas, monospace; font-size: .85rem; }
+  .empty { text-align: center; color: var(--muted); padding: 28px 10px; font-size: .92rem; }
+  td.actions { white-space: nowrap; }
+  td.actions .btn { margin-right: 4px; }
+  .daycount { font-weight: 650; }
+  .daycount.over { color: var(--amber); }
+  .duesoon { font-size: .76rem; color: var(--muted); }
+
+  /* Modal (mark as failed) */
+  #overlay {
+    display: none; position: fixed; inset: 0; z-index: 50;
+    background: rgba(16,42,67,.45);
+    align-items: flex-start; justify-content: center; padding: 40px 16px;
+    overflow-y: auto;
+  }
+  /* Mobile: bigger tap targets + tell people the tables scroll sideways */
+  @media (max-width: 720px) {
+    .btn.small { padding: 10px 12px; font-size: .85rem; }
+    select.pillselect { padding: 8px 10px; }
+    .scrollhint {
+      display: block; font-size: .78rem; color: var(--muted);
+      margin-bottom: 6px;
+    }
+  }
+  #overlay.open { display: flex; }
+  .modal {
+    background: #fff; border-radius: 12px; padding: 20px 22px;
+    max-width: 560px; width: 100%; box-shadow: 0 10px 40px rgba(0,0,0,.25);
+  }
+  .modal h3 { color: var(--blue-dark); font-size: 1.05rem; margin-bottom: 2px; }
+  .modal .which { font-size: .85rem; color: var(--muted); margin-bottom: 12px; }
+
+  /* Onboarding tour */
+  #tour {
+    display: none; position: fixed; inset: 0; z-index: 60;
+    background: rgba(16,42,67,.55);
+    align-items: center; justify-content: center; padding: 20px;
+    overflow-y: auto;
+  }
+  #tour.open { display: flex; }
+  .tourmodal {
+    background: #fff; border-radius: 14px; padding: 24px 26px;
+    max-width: 440px; width: 100%; text-align: center;
+    box-shadow: 0 10px 40px rgba(0,0,0,.3);
+  }
+  .tourmodal #tourPod svg { width: 96px; height: auto; display: block; margin: 0 auto 6px; }
+  .tourmodal h3 { color: var(--blue-dark); font-size: 1.15rem; margin-bottom: 8px; }
+  .tourmodal #tourBody { font-size: .92rem; color: var(--ink); min-height: 76px; }
+  .tourdots { display: flex; justify-content: center; gap: 7px; margin: 14px 0 4px; }
+  .tourdots span { width: 9px; height: 9px; border-radius: 50%; background: var(--line); }
+  .tourdots span.on { background: var(--blue); }
+  .tourmodal .btnrow { justify-content: center; }
+  .tourskip {
+    display: inline-block; margin-top: 10px; background: none; border: none;
+    color: var(--muted); font-size: .8rem; cursor: pointer; text-decoration: underline;
+  }
+  .tourbtn {
+    margin-top: 10px; background: rgba(255,255,255,.16); color: #fff;
+    border: 1px solid rgba(255,255,255,.4); border-radius: 8px;
+    padding: 6px 12px; font-size: .82rem; cursor: pointer; font-family: inherit;
+  }
+  .tourbtn:hover { background: rgba(255,255,255,.28); }
+
+  /* ===== PRINTABLE CLAIM FORM ===== */
+  #printArea { display: none; }
+  @media print {
+    body * { visibility: hidden; }
+    #printArea, #printArea * { visibility: visible; }
+    #printArea { display: block; position: absolute; top: 0; left: 0; width: 100%; }
+    @page { margin: 0.6in; }
+  }
+  .claim { font-family: Georgia, "Times New Roman", serif; color: #111; max-width: 7.5in; }
+  .claim .chead {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    border-bottom: 3px double #0a4266; padding-bottom: 10px;
+  }
+  .claim .chead h1 { font-size: 1.25rem; color: #0a4266; }
+  .claim .chead .sub { font-size: .85rem; color: #444; margin-top: 2px; }
+  .claim .chead .meta { text-align: right; font-size: .8rem; color: #444; }
+  .claim h3 {
+    font-size: .95rem; color: #0a4266; margin: 16px 0 6px;
+    border-bottom: 1px solid #999; padding-bottom: 2px;
+    font-variant: small-caps; letter-spacing: .04em;
+  }
+  .claim table.kv { width: 100%; border-collapse: collapse; font-size: .9rem; }
+  .claim table.kv td { padding: 5px 8px; border: 1px solid #bbb; }
+  .claim table.kv td.k { width: 34%; background: #f0f4f7; font-weight: bold; }
+  .claim .desc {
+    border: 1px solid #bbb; min-height: 90px; padding: 8px; font-size: .9rem; white-space: pre-wrap;
+  }
+  .claim .siggrid { display: flex; gap: 40px; margin-top: 34px; }
+  .claim .sig { flex: 1; border-top: 1px solid #111; padding-top: 4px; font-size: .8rem; }
+  .claim .foot { margin-top: 22px; font-size: .75rem; color: #555; border-top: 1px solid #ccc; padding-top: 6px; }
+  .claim .checklist { font-size: .85rem; margin: 4px 0 0 4px; }
+  .claim .checklist li { list-style: none; margin: 3px 0; }
+  .claim .checklist li::before { content: "\2610\00a0\00a0"; }
+</style>
+</head>
+<body>
+
+<header class="app">
+  <h1><span class="cross">&#10010;</span> T1D Supply Failure Tracker</h1>
+  <p>Log every Dexcom sensor &amp; Omnipod when you put it on. If one fails early, mark it failed &mdash; then export to Excel or print a claim form for the replacement request. All data stays on this computer.</p>
+  <button class="tourbtn" onclick="startTour()">&#127891; Show me around</button>
+  <div class="mascot" aria-hidden="true">
+    <div class="bubble">Hi, I'm <b>Poddy</b>! Log your gear and I'll remember all the numbers for you.</div>
+    <span data-pod="wave"></span>
+  </div>
+</header>
+
+<main>
+
+  <div id="backupNag">
+    <span>&#9888;&#65039; <b>Protect your log:</b> it's been a while since your last backup. If this browser's data ever gets cleared, an up-to-date backup file is the only way to get your records back.</span>
+    <button class="btn green" onclick="exportBackup()">Back up now</button>
+    <button class="btn secondary" onclick="snoozeNag()">Remind me later</button>
+  </div>
+
+  <!-- Quick reference -->
+  <section class="card">
+    <h2>&#128222; What each company asks for</h2>
+    <div class="refgrid">
+      <div class="refbox dex">
+        <strong class="title">Dexcom (G6 / G7 sensors &amp; transmitters)</strong>
+        They need the <b>Serial Number (SN)</b> &mdash; on the sensor box (4th number from the bottom) or on the back of the applicator. Plus the date the problem started and the exact error message you saw.
+        <ul>
+          <li>Online: <b>account.dexcom.com</b> or the Dexcom app &rarr; Support</li>
+          <li>Phone: <span class="phone">844&#8209;607&#8209;8398</span></li>
+        </ul>
+      </div>
+      <div class="refbox">
+        <strong class="title">Omnipod (Insulet)</strong>
+        They need the <b>Lot number</b> AND <b>Sequence number</b> &mdash; both are printed on the flat side of the pod, the pod tray lid, and the box. They will also ask what happened right before the failure and what alarm you got.
+        <ul>
+          <li>Online: <b>PodderCentral</b> (omnipod.com)</li>
+          <li>Phone: <span class="phone">1&#8209;800&#8209;641&#8209;2049</span> (24/7)</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- Family / contact info -->
+  <section class="card">
+    <h2><span class="step">1</span> Your info (appears on the printed forms)</h2>
+    <div class="grid">
+      <div class="field"><label>Patient name</label><input id="pName" placeholder="Child or adult using the device"></div>
+      <div class="field"><label>Parent / caregiver name</label><input id="pCaregiver" placeholder="Person submitting the request"></div>
+      <div class="field"><label>Phone</label><input id="pPhone" placeholder="(555) 555-5555"></div>
+      <div class="field"><label>Email</label><input id="pEmail" placeholder="you@example.com"></div>
+      <div class="field wide"><label>Shipping address (for the replacement)</label><input id="pAddress" placeholder="Street, City, State, ZIP"></div>
+    </div>
+    <div class="btnrow">
+      <button class="btn secondary" onclick="savePatient()">Save my info</button>
+      <span id="patientSaved" style="color:var(--green);font-size:.85rem;display:none">&#10003; Saved</span>
+    </div>
+  </section>
+
+  <!-- Add device at change time -->
+  <section class="card">
+    <h2><span class="step">2</span> Log every device when you put it on</h2>
+    <p class="sub">Takes 30 seconds at every sensor/pod change. Nobody knows if it will fail on day 1 or day 8 &mdash; if you log it now, the serial &amp; lot numbers are already saved when something goes wrong (even after the box is in the trash).</p>
+    <form id="itemForm" onsubmit="return saveItem(event)">
+      <input type="hidden" id="editId">
+      <div class="grid">
+        <div class="field">
+          <label>Device <span class="req">*</span></label>
+          <select id="fDevice" required onchange="toggleIdFields()">
+            <option value="">Choose&hellip;</option>
+            <option value="Dexcom G7 Sensor">Dexcom G7 Sensor</option>
+            <option value="Dexcom G6 Sensor">Dexcom G6 Sensor</option>
+            <option value="Dexcom G6 Transmitter">Dexcom G6 Transmitter</option>
+            <option value="Omnipod 5 Pod">Omnipod 5 Pod</option>
+            <option value="Omnipod DASH Pod">Omnipod DASH Pod</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        <div class="field" id="serialField">
+          <label>Serial number (SN) <span class="req">*</span> <span class="hint">on the box or back of applicator</span></label>
+          <input id="fSerial" placeholder="e.g. 123456789012">
+        </div>
+        <div class="field" id="lotField" style="display:none">
+          <label>Lot number <span class="req">*</span> <span class="hint">flat side of pod / tray lid / box</span></label>
+          <input id="fLot" placeholder="e.g. L91234">
+        </div>
+        <div class="field" id="seqField" style="display:none">
+          <label>Sequence number <span class="req">*</span> <span class="hint">next to the lot, tiny print</span></label>
+          <input id="fSeq" placeholder="e.g. 0123456">
+        </div>
+        <div class="field">
+          <label>Date put on / started <span class="req">*</span></label>
+          <input type="date" id="fDateOn" required>
+        </div>
+        <div class="field">
+          <label>Use-by date on box <span class="hint">(optional)</span></label>
+          <input type="date" id="fExpiry">
+        </div>
+      </div>
+      <div class="btnrow">
+        <button type="submit" class="btn" id="saveBtn">+ Add device</button>
+        <button type="button" class="btn secondary" id="cancelEdit" style="display:none" onclick="resetForm()">Cancel edit</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- Currently in use -->
+  <section class="card">
+    <h2><span class="step">3</span> Currently on the body</h2>
+    <p class="sub">When one fails, hit <b>&#10007; It failed</b> and describe what happened. If it lasts its full life, hit <b>&#10003; Worn full life</b> to archive it.</p>
+    <div class="scrollhint">&#8596; Swipe the table sideways to reach the buttons</div>
+    <div class="tablewrap">
+      <table class="inv">
+        <thead>
+          <tr>
+            <th>Device</th><th>Serial / Lot &amp; Seq</th><th>Put on</th><th>Wear</th><th>Change by</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="activeBody"></tbody>
+      </table>
+      <div id="activeEmpty" class="empty"><span data-pod="happy"></span>Nothing on right now. Log a device above at your next sensor or pod change.</div>
+    </div>
+  </section>
+
+  <!-- Failure log / history -->
+  <section class="card">
+    <h2><span class="step">4</span> Failure log &amp; history</h2>
+    <div class="scrollhint">&#8596; Swipe the table sideways to reach the buttons</div>
+    <div class="tablewrap">
+      <table class="inv">
+        <thead>
+          <tr>
+            <th>Device</th><th>Serial / Lot &amp; Seq</th><th>Put on</th><th>Failed</th>
+            <th>Days worn</th><th>Status</th><th>Ref #</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="histBody"></tbody>
+      </table>
+      <div id="histEmpty" class="empty"><span data-pod="cheer"></span>No failures logged yet &mdash; hopefully it stays that way!</div>
+    </div>
+    <div class="btnrow" style="align-items:flex-end">
+      <div class="field">
+        <label>From <span class="hint">(optional)</span></label>
+        <input type="date" id="expFrom">
+      </div>
+      <div class="field">
+        <label>To <span class="hint">(optional)</span></label>
+        <input type="date" id="expTo">
+      </div>
+      <button class="btn green" onclick="exportExcel()">&#11015; Download Excel (.xlsx)</button>
+      <button class="btn secondary" onclick="exportExcel(true)">Download CSV backup</button>
+    </div>
+    <div class="btnrow">
+      <span class="hint">Leave the dates blank to export everything. A device counts as "in range" if it was put on or failed between those dates.</span>
+      <label style="font-weight:400;display:flex;align-items:center;gap:6px;font-size:.85rem;color:var(--muted)">
+        <input type="checkbox" id="showCompleted" onchange="render()" style="width:18px;height:18px"> Show devices that finished normally
+      </label>
+    </div>
+  </section>
+
+  <!-- Backup & restore -->
+  <section class="card">
+    <h2>&#128190; Backup &amp; restore</h2>
+    <p class="sub">Your log lives only in this browser, on this computer. Save a backup file now and then &mdash; if the browser's data ever gets cleared, <b>Restore</b> brings everything back. You can also use a backup file to move the log to another computer.</p>
+    <div class="btnrow">
+      <button class="btn secondary" onclick="exportBackup()">&#11015; Save backup file</button>
+      <button class="btn secondary" onclick="$('restoreFile').click()">&#11014; Restore from backup</button>
+      <input type="file" id="restoreFile" accept=".json,application/json" style="display:none" onchange="importBackup(this)">
+      <span id="backupMsg" style="color:var(--green);font-size:.85rem;display:none"></span>
+    </div>
+    <details style="margin-top:14px">
+      <summary style="cursor:pointer;font-size:.9rem;font-weight:600;color:var(--blue-dark)">&#128737;&#65039; Tips: stop your browser from deleting the log</summary>
+      <div style="font-size:.86rem;margin-top:10px;line-height:1.6">
+        Your log is stored by your browser, so the browser's cleanup tools can delete it. Four habits keep it safe:
+        <ul style="margin:8px 0 0 20px">
+          <li><b>Clearing browsing data?</b> Uncheck <i>"Cookies and other site data"</i> before you clear &mdash; or pick <i>"Last hour"</i> instead of <i>"All time"</i>. History and cache can go; your log stays.</li>
+          <li><b>Chrome / Edge / Chromebook:</b> in Settings &rarr; Privacy &rarr; Site settings &rarr; <i>On-device site data</i>, add this site under <i>"Sites that can always save data"</i>. That protects the log even if your browser is set to clean up when it closes.</li>
+          <li><b>iPhone / iPad:</b> use Share &rarr; <i>Add to Home Screen</i>. Installed this way, the app gets its own separate storage that Safari's "Clear History and Website Data" doesn't touch.</li>
+          <li><b>Never use this app in an Incognito or Private window</b> &mdash; everything logged there vanishes when the window closes.</li>
+        </ul>
+        <p style="margin-top:8px">And no matter what: the <b>backup file is the only copy your browser can't delete</b>. That's why Poddy nags you about it. &#128521;</p>
+      </div>
+    </details>
+  </section>
+
+  <p style="font-size:.75rem;color:var(--muted);margin:22px 4px 0;line-height:1.5">
+    <b>Independent &amp; unofficial.</b> This free community tool is not affiliated with, endorsed by, or sponsored by
+    Dexcom, Inc. or Insulet Corporation. Dexcom, G6, and G7 are trademarks of Dexcom, Inc.; Omnipod and DASH are trademarks
+    of Insulet Corporation, used only to identify compatible products. This tool organizes your own records — it is not
+    medical advice, and replacement decisions are made solely by the manufacturers, whose policies and contact details can
+    change. All data stays on this device; keep backups.
+  </p>
+
+</main>
+
+<!-- Onboarding tour -->
+<div id="tour">
+  <div class="tourmodal">
+    <span id="tourPod" aria-hidden="true"></span>
+    <h3 id="tourTitle"></h3>
+    <div id="tourBody"></div>
+    <div class="tourdots" id="tourDots"></div>
+    <div class="btnrow">
+      <button class="btn secondary" id="tourBack" onclick="tourStep(-1)">Back</button>
+      <button class="btn" id="tourNext" onclick="tourStep(1)">Next</button>
+    </div>
+    <button class="tourskip" onclick="endTour()">Skip the tour</button>
+  </div>
+</div>
+
+<!-- Mark-as-failed modal -->
+<div id="overlay">
+  <div class="modal">
+    <span data-pod="sad" aria-hidden="true"></span>
+    <h3 id="modalTitle">Mark as failed</h3>
+    <div class="which" id="modalWhich"></div>
+    <div class="grid">
+      <div class="field">
+        <label>Date it failed <span class="req">*</span></label>
+        <input type="date" id="mDateFail">
+      </div>
+      <div class="field">
+        <label>Replacement status</label>
+        <select id="mStatus">
+          <option value="Not submitted">Not submitted yet</option>
+          <option value="Submitted">Submitted &mdash; waiting</option>
+          <option value="Replaced">Replacement received</option>
+          <option value="Denied">Denied</option>
+        </select>
+      </div>
+      <div class="field wide">
+        <label>What happened? <span class="req">*</span> <span class="hint">exact error/alarm message, what you were doing, how long it lasted</span></label>
+        <textarea id="mProblem" placeholder="e.g. Sensor failed error on day 4 during normal wear / Pod screeched with a Pod Error alarm during a bolus"></textarea>
+      </div>
+      <div class="field">
+        <label>Case / reference # <span class="hint">(after you contact them)</span></label>
+        <input id="mRef" placeholder="e.g. CS-0012345">
+      </div>
+    </div>
+    <div id="modalWarn" class="warn"></div>
+    <div class="btnrow">
+      <button class="btn solidred" onclick="confirmFail()" id="modalSave">Save failure</button>
+      <button class="btn secondary" onclick="closeModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Hidden printable claim form -->
+<div id="printArea"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const STORE = 't1d_items', PSTORE = 't1d_patient';
+let items = JSON.parse(localStorage.getItem(STORE) || '[]');
+let modalItemId = null;
+
+const isOmnipod = d => d && d.startsWith('Omnipod');
+const RATED = {
+  'Dexcom G7 Sensor': 10, 'Dexcom G6 Sensor': 10, 'Dexcom G6 Transmitter': 90,
+  'Omnipod 5 Pod': 3, 'Omnipod DASH Pod': 3
+};
+const COMPANY = {
+  dexcom: { name: 'Dexcom, Inc.', phone: '844-607-8398', web: 'account.dexcom.com (or Dexcom app → Support)' },
+  insulet: { name: 'Insulet Corporation (Omnipod)', phone: '1-800-641-2049 (24/7)', web: 'PodderCentral — omnipod.com' }
+};
+const FAIL_STATUSES = ['Not submitted', 'Submitted', 'Replaced', 'Denied'];
+const isFailed = it => FAIL_STATUSES.includes(it.status);
+
+const todayISO = () => {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+};
+
+/* ---------- patient info ---------- */
+function loadPatient() {
+  const p = JSON.parse(localStorage.getItem(PSTORE) || '{}');
+  $('pName').value = p.name || ''; $('pCaregiver').value = p.caregiver || '';
+  $('pPhone').value = p.phone || ''; $('pEmail').value = p.email || '';
+  $('pAddress').value = p.address || '';
+}
+function getPatient() {
+  return { name: $('pName').value.trim(), caregiver: $('pCaregiver').value.trim(),
+           phone: $('pPhone').value.trim(), email: $('pEmail').value.trim(), address: $('pAddress').value.trim() };
+}
+function savePatient() {
+  localStorage.setItem(PSTORE, JSON.stringify(getPatient()));
+  $('patientSaved').style.display = 'inline';
+  setTimeout(() => $('patientSaved').style.display = 'none', 2500);
+}
+
+/* ---------- helpers ---------- */
+function toggleIdFields() {
+  const omni = isOmnipod($('fDevice').value);
+  $('serialField').style.display = omni ? 'none' : '';
+  $('lotField').style.display = omni ? '' : 'none';
+  $('seqField').style.display = omni ? '' : 'none';
+}
+function fmt(d) {
+  if (!d) return '';
+  const [y, m, day] = d.split('-');
+  return `${m}/${day}/${y}`;
+}
+function addDays(iso, n) {
+  const d = new Date(iso + 'T12:00:00');
+  d.setDate(d.getDate() + n);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function daysBetween(a, b) {
+  return Math.max(0, Math.round((new Date(b) - new Date(a)) / 86400000));
+}
+function daysWorn(it) {
+  if (!it.dateOn) return '';
+  return daysBetween(it.dateOn, it.dateFail || it.dateEnd || todayISO());
+}
+
+/* ---------- add / edit device ---------- */
+function saveItem(e) {
+  e.preventDefault();
+  const device = $('fDevice').value, omni = isOmnipod(device);
+  const editId = $('editId').value;
+  const existing = editId ? items.find(x => x.id === editId) : null;
+  const it = {
+    id: editId || Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+    device,
+    serial: omni ? '' : $('fSerial').value.trim(),
+    lot: omni ? $('fLot').value.trim() : '',
+    seq: omni ? $('fSeq').value.trim() : '',
+    dateOn: $('fDateOn').value,
+    expiry: $('fExpiry').value,
+    // preserve failure info on edit
+    status: existing ? existing.status : 'In use',
+    dateFail: existing ? existing.dateFail : '',
+    dateEnd: existing ? existing.dateEnd : '',
+    problem: existing ? existing.problem : '',
+    ref: existing ? existing.ref : ''
+  };
+  if (omni && (!it.lot || !it.seq)) { alert('Insulet requires BOTH the lot number and the sequence number — please fill in both. They are printed together on the flat side of the pod and on the tray lid.'); return false; }
+  if (!omni && device !== 'Other' && !it.serial) { alert('Dexcom requires the serial number (SN) — without it they cannot verify the product. Snap a photo of the box before you toss it!'); return false; }
+
+  const idx = items.findIndex(x => x.id === it.id);
+  if (idx >= 0) items[idx] = it; else items.unshift(it);
+  persist(); resetForm(); render();
+  return false;
+}
+function resetForm() {
+  $('itemForm').reset(); $('editId').value = '';
+  $('fDateOn').value = todayISO();
+  $('saveBtn').textContent = '+ Add device';
+  $('cancelEdit').style.display = 'none';
+  toggleIdFields();
+}
+function editItem(id) {
+  const it = items.find(x => x.id === id); if (!it) return;
+  $('editId').value = it.id; $('fDevice').value = it.device; toggleIdFields();
+  $('fSerial').value = it.serial; $('fLot').value = it.lot; $('fSeq').value = it.seq;
+  $('fDateOn').value = it.dateOn; $('fExpiry').value = it.expiry;
+  $('saveBtn').textContent = 'Save changes';
+  $('cancelEdit').style.display = '';
+  window.scrollTo({ top: $('itemForm').offsetTop - 80, behavior: 'smooth' });
+}
+function deleteItem(id) {
+  const it = items.find(x => x.id === id);
+  if (!confirm('Delete this ' + (it ? it.device : 'entry') + ' from the log?')) return;
+  items = items.filter(x => x.id !== id);
+  persist(); render();
+}
+function persist() { localStorage.setItem(STORE, JSON.stringify(items)); updateBackupNag(); }
+
+/* ---------- mark failed (modal) ---------- */
+function openFailModal(id) {
+  const it = items.find(x => x.id === id); if (!it) return;
+  modalItemId = id;
+  const already = isFailed(it);
+  $('modalTitle').textContent = already ? 'Edit failure details' : 'Mark as failed';
+  $('modalWhich').textContent = it.device + ' — ' + (isOmnipod(it.device)
+    ? 'Lot ' + it.lot + ', Seq ' + it.seq : 'SN ' + it.serial) + ' — put on ' + fmt(it.dateOn);
+  $('mDateFail').value = it.dateFail || todayISO();
+  $('mProblem').value = it.problem || '';
+  $('mStatus').value = already ? it.status : 'Not submitted';
+  $('mRef').value = it.ref || '';
+  modalWarnCheck();
+  $('overlay').classList.add('open');
+  $('mProblem').focus();
+}
+function modalWarnCheck() {
+  const it = items.find(x => x.id === modalItemId);
+  const w = $('modalWarn'); w.style.display = 'none';
+  if (!it || !$('mDateFail').value) return;
+  const rated = RATED[it.device];
+  if (!rated) return;
+  const days = daysBetween(it.dateOn, $('mDateFail').value);
+  if (days > rated) {
+    w.textContent = '⚠️ Heads up: this device is rated for ' + rated + ' days and was worn ' + days +
+      '. The company may say it reached its full life — still worth reporting the error, but a free replacement is less likely.';
+    w.style.display = 'block';
+  }
+}
+function confirmFail() {
+  const it = items.find(x => x.id === modalItemId); if (!it) return;
+  if (!$('mDateFail').value) { alert('Please enter the date it failed.'); return; }
+  if (!$('mProblem').value.trim()) { alert('Please describe what happened — the company will ask for the exact error or alarm.'); return; }
+  if ($('mDateFail').value < it.dateOn) { alert('The failure date is before the date it was put on — please double-check.'); return; }
+  it.dateFail = $('mDateFail').value;
+  it.problem = $('mProblem').value.trim();
+  it.status = $('mStatus').value;
+  it.ref = $('mRef').value.trim();
+  it.dateEnd = '';
+  persist(); closeModal(); render();
+}
+function closeModal() { $('overlay').classList.remove('open'); modalItemId = null; }
+$('overlay').addEventListener('click', e => { if (e.target === $('overlay')) closeModal(); });
+$('mDateFail').addEventListener('change', modalWarnCheck);
+
+/* ---------- worn full life ---------- */
+function completeItem(id) {
+  const it = items.find(x => x.id === id); if (!it) return;
+  it.status = 'Completed OK';
+  it.dateEnd = todayISO();
+  persist(); render();
+}
+function reactivate(id) {
+  const it = items.find(x => x.id === id); if (!it) return;
+  if (!confirm('Move this ' + it.device + ' back to "currently on the body"?')) return;
+  it.status = 'In use'; it.dateFail = ''; it.dateEnd = ''; it.problem = ''; it.ref = '';
+  persist(); render();
+}
+function setStatus(id, status) {
+  const it = items.find(x => x.id === id); if (!it) return;
+  it.status = status; persist(); render();
+}
+
+/* ---------- tables ---------- */
+const esc = s => String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const idCell = it => isOmnipod(it.device)
+  ? `Lot <span class="mono">${esc(it.lot)}</span><br>Seq <span class="mono">${esc(it.seq)}</span>`
+  : `<span class="mono">${esc(it.serial)}</span>`;
+
+function render() {
+  const active = items.filter(it => it.status === 'In use');
+  const showCompleted = $('showCompleted').checked;
+  const hist = items.filter(it => isFailed(it) || (showCompleted && it.status === 'Completed OK'));
+
+  // --- active table ---
+  $('activeEmpty').style.display = active.length ? 'none' : 'block';
+  $('activeBody').innerHTML = active.map(it => {
+    const rated = RATED[it.device];
+    const worn = daysWorn(it);
+    const over = rated && worn > rated;
+    const changeBy = rated ? addDays(it.dateOn, rated) : '';
+    return `<tr>
+      <td class="devname">${esc(it.device)}</td>
+      <td>${idCell(it)}</td>
+      <td>${fmt(it.dateOn)}</td>
+      <td><span class="daycount ${over ? 'over' : ''}">Day ${worn}${rated ? ' of ' + rated : ''}</span></td>
+      <td>${changeBy ? fmt(changeBy) + (over ? ' <span class="duesoon">(past due)</span>' : '') : ''}</td>
+      <td class="actions">
+        <button class="btn small danger" onclick="openFailModal('${it.id}')">&#10007; It failed</button>
+        <button class="btn small ok" onclick="completeItem('${it.id}')">&#10003; Worn full life</button>
+        <button class="btn small secondary" onclick="editItem('${it.id}')">Edit</button>
+        <button class="btn small secondary" onclick="deleteItem('${it.id}')">&times;</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  // --- history table ---
+  $('histEmpty').style.display = hist.length ? 'none' : 'block';
+  $('histBody').innerHTML = hist.map(it => {
+    if (it.status === 'Completed OK') {
+      return `<tr>
+        <td class="devname">${esc(it.device)}</td>
+        <td>${idCell(it)}</td>
+        <td>${fmt(it.dateOn)}</td>
+        <td>&mdash;</td>
+        <td>${daysWorn(it)}</td>
+        <td><span class="pill completed">Completed OK</span></td>
+        <td></td>
+        <td class="actions">
+          <button class="btn small secondary" onclick="reactivate('${it.id}')">Undo</button>
+          <button class="btn small secondary" onclick="deleteItem('${it.id}')">&times;</button>
+        </td>
+      </tr>`;
+    }
+    const pillClass = { 'Not submitted': 'not-submitted', 'Submitted': 'submitted', 'Replaced': 'replaced', 'Denied': 'denied' }[it.status] || 'not-submitted';
+    return `<tr>
+      <td class="devname">${esc(it.device)}</td>
+      <td>${idCell(it)}</td>
+      <td>${fmt(it.dateOn)}</td>
+      <td>${fmt(it.dateFail)}</td>
+      <td>${daysWorn(it)}</td>
+      <td>
+        <select class="pillselect ${pillClass}" onchange="setStatus('${it.id}', this.value)" title="Click to update the claim status">
+          ${FAIL_STATUSES.map(s => `<option ${s === it.status ? 'selected' : ''}>${s}</option>`).join('')}
+        </select>
+      </td>
+      <td class="mono">${esc(it.ref)}</td>
+      <td class="actions">
+        <button class="btn small" onclick="printClaim('${it.id}')">&#128424; Print form</button>
+        <button class="btn small secondary" onclick="openFailModal('${it.id}')">Edit</button>
+        <button class="btn small secondary" onclick="deleteItem('${it.id}')">&times;</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+/* ---------- Excel export ---------- */
+function exportExcel(csv) {
+  if (!items.length) { alert('Nothing to export yet — log a device first.'); return; }
+  const from = $('expFrom').value, to = $('expTo').value;
+  if (from && to && from > to) { alert('The "From" date is after the "To" date — please swap them.'); return; }
+  const inRange = it => {
+    if (!from && !to) return true;
+    // a device counts if it was put on OR failed/came off within the range
+    return [it.dateOn, it.dateFail, it.dateEnd].filter(Boolean).some(d =>
+      (!from || d >= from) && (!to || d <= to));
+  };
+  const ranged = items.filter(inRange);
+  if (!ranged.length) { alert('No devices found between those dates — widen the range or clear it to export everything.'); return; }
+  const failed = ranged.filter(isFailed);
+  const rangeLabel = (from || to) ? ('  —  Date range: ' + (from ? fmt(from) : 'start') + ' to ' + (to ? fmt(to) : 'today')) : '';
+  const rangeFile = (from || to) ? ('_' + (from || 'start') + '_to_' + (to || 'today')) : '';
+  const p = getPatient();
+  const today = new Date().toLocaleDateString();
+  const header = ['Device', 'Serial Number', 'Lot Number', 'Sequence Number',
+                  'Date Put On', 'Date Failed', 'Days Worn', 'Use-By Date',
+                  'Problem Description', 'Status', 'Case/Ref #', 'Company', 'Company Phone'];
+  const failRow = it => [
+    it.device, it.serial, it.lot, it.seq,
+    fmt(it.dateOn), fmt(it.dateFail), daysWorn(it), fmt(it.expiry),
+    it.problem, it.status, it.ref,
+    isOmnipod(it.device) ? COMPANY.insulet.name : COMPANY.dexcom.name,
+    isOmnipod(it.device) ? COMPANY.insulet.phone : COMPANY.dexcom.phone
+  ];
+  const failData = [
+    ['T1D Supply Failure Log — Devices That Failed Before Their Rated Wear Time' + rangeLabel],
+    ['Patient: ' + (p.name || '—') + '    Caregiver: ' + (p.caregiver || '—') + '    Phone: ' + (p.phone || '—') + '    Exported: ' + today],
+    [],
+    header
+  ].concat(failed.map(failRow));
+
+  if (csv || typeof XLSX === 'undefined') {
+    const csvText = failData.map(r => r.map(c => '"' + String(c ?? '').replace(/"/g, '""') + '"').join(',')).join('\r\n');
+    download(new Blob(['﻿' + csvText], { type: 'text/csv' }), 'T1D-failure-log' + rangeFile + '.csv');
+    return;
+  }
+  // ---- cell styles (xlsx-js-style) ----
+  const FILL = rgb => ({ patternType: 'solid', fgColor: { rgb } });
+  const S_TITLE = { font: { bold: true, sz: 13, color: { rgb: '0A4266' } } };
+  const S_SUB = { font: { sz: 10, color: { rgb: '5B7182' } } };
+  const S_HEADER = { font: { bold: true, sz: 10, color: { rgb: 'FFFFFF' } }, fill: FILL('0E5A8A'), alignment: { vertical: 'center' } };
+  const S_FAIL = { fill: FILL('FDECEA') };
+  const S_FAIL_WRAP = { fill: FILL('FDECEA'), alignment: { wrapText: true, vertical: 'top' } };
+  const S_STATUS = {
+    'Not submitted': { font: { bold: true, color: { rgb: 'B3261E' } }, fill: FILL('F9D9D5') },
+    'Submitted':     { font: { bold: true, color: { rgb: '9A6700' } }, fill: FILL('FFF0C2') },
+    'Replaced':      { font: { bold: true, color: { rgb: '1A7F37' } }, fill: FILL('CFEEDA') },
+    'Denied':        { font: { bold: true, color: { rgb: '555555' } }, fill: FILL('E0E0E0') }
+  };
+  const cellS = (ws, r, c, style) => {
+    const ref = XLSX.utils.encode_cell({ r, c });
+    if (!ws[ref]) ws[ref] = { t: 's', v: '' };
+    ws[ref].s = style;
+  };
+  const styleRow = (ws, r, nCols, style) => { for (let c = 0; c < nCols; c++) cellS(ws, r, c, style); };
+
+  const wb = XLSX.utils.book_new();
+
+  // ---- Sheet 1: Failed Devices (every row tinted red = a failure) ----
+  const ws = XLSX.utils.aoa_to_sheet(failData);
+  ws['!cols'] = [22, 16, 12, 14, 12, 12, 10, 12, 60, 15, 14, 28, 20].map(w => ({ wch: w }));
+  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 12 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: 12 } }];
+  cellS(ws, 0, 0, S_TITLE);
+  cellS(ws, 1, 0, S_SUB);
+  styleRow(ws, 3, header.length, S_HEADER);
+  failed.forEach((it, i) => {
+    const r = 4 + i;
+    styleRow(ws, r, header.length, S_FAIL);
+    cellS(ws, r, 8, S_FAIL_WRAP);                       // problem description: wrap text
+    cellS(ws, r, 9, S_STATUS[it.status] || S_FAIL);     // status: color-coded
+    ws['!rows'] = ws['!rows'] || [];
+    ws['!rows'][r] = { hpt: Math.min(90, 15 * Math.max(1, Math.ceil((it.problem || '').length / 55)) + 4) };
+  });
+  XLSX.utils.book_append_sheet(wb, ws, 'Failed Devices');
+
+  // ---- Sheet 2: Full Log (failed rows highlighted red among normal ones) ----
+  const allHeader = ['Device', 'Serial Number', 'Lot Number', 'Sequence Number',
+                     'Date Put On', 'Date Off / Failed', 'Days Worn', 'Outcome', 'Notes'];
+  const allData = [
+    ['Full Device Log — every sensor & pod, exported ' + today + rangeLabel],
+    [],
+    allHeader
+  ].concat(ranged.map(it => [
+    it.device, it.serial, it.lot, it.seq,
+    fmt(it.dateOn), fmt(it.dateFail || it.dateEnd), daysWorn(it),
+    it.status === 'In use' ? 'Still in use' : (it.status === 'Completed OK' ? 'Worn full life' : 'FAILED — ' + it.status),
+    it.problem
+  ]));
+  const ws2 = XLSX.utils.aoa_to_sheet(allData);
+  ws2['!cols'] = [22, 16, 12, 14, 12, 14, 10, 26, 60].map(w => ({ wch: w }));
+  ws2['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 8 } }];
+  cellS(ws2, 0, 0, S_TITLE);
+  styleRow(ws2, 2, allHeader.length, S_HEADER);
+  ranged.forEach((it, i) => {
+    const r = 3 + i;
+    if (isFailed(it)) {
+      styleRow(ws2, r, allHeader.length, S_FAIL);
+      cellS(ws2, r, 7, { font: { bold: true, color: { rgb: 'B3261E' } }, fill: FILL('F9D9D5') });
+      cellS(ws2, r, 8, S_FAIL_WRAP);
+    } else if (it.status === 'Completed OK') {
+      cellS(ws2, r, 7, { font: { color: { rgb: '1A7F37' } } });
+    } else {
+      cellS(ws2, r, 7, { font: { italic: true, color: { rgb: '0E5A8A' } } });
+    }
+  });
+  XLSX.utils.book_append_sheet(wb, ws2, 'Full Log');
+
+  XLSX.writeFile(wb, 'T1D-failure-log' + rangeFile + '.xlsx');
+}
+function download(blob, name) {
+  // iPhones/iPads handle files best through the share sheet (Save to Files, AirDrop, Mail),
+  // and Home Screen web apps there can't always trigger normal downloads.
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (isIOS && navigator.canShare) {
+    try {
+      const file = new File([blob], name, { type: blob.type || 'application/octet-stream' });
+      if (navigator.canShare({ files: [file] })) {
+        navigator.share({ files: [file] }).catch(() => {});
+        return;
+      }
+    } catch (e) { /* fall through to normal download */ }
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  a.click(); URL.revokeObjectURL(a.href);
+}
+
+/* ---------- printable claim form ---------- */
+function printClaim(id) {
+  const it = items.find(x => x.id === id); if (!it) return;
+  const p = getPatient();
+  const omni = isOmnipod(it.device);
+  const co = omni ? COMPANY.insulet : COMPANY.dexcom;
+  const idRows = omni
+    ? `<tr><td class="k">Lot Number</td><td>${esc(it.lot)}</td></tr>
+       <tr><td class="k">Sequence Number</td><td>${esc(it.seq)}</td></tr>`
+    : `<tr><td class="k">Serial Number (SN)</td><td>${esc(it.serial)}</td></tr>`;
+  const checklist = omni
+    ? `<li>Report via PodderCentral (omnipod.com) or call ${co.phone}</li>
+       <li>Have the pod (or its tray lid / box) on hand for the lot &amp; sequence numbers</li>
+       <li>Note the exact alarm (e.g. screeching Pod Error) and what you were doing</li>
+       <li>Write the case number they give you in the box above and in the app</li>`
+    : `<li>Submit at account.dexcom.com, in the Dexcom app (Support), or call ${co.phone}</li>
+       <li>Have the sensor box or applicator on hand for the serial number</li>
+       <li>Note the exact on-screen error message and when it started</li>
+       <li>Write the case number they give you in the box above and in the app</li>`;
+  const worn = daysWorn(it);
+
+  $('printArea').innerHTML = `
+  <div class="claim">
+    <div class="chead">
+      <div>
+        <h1>Product Replacement Request &mdash; Supporting Record</h1>
+        <div class="sub">Early device failure &bull; Type 1 Diabetes supplies</div>
+      </div>
+      <div class="meta">
+        Prepared: ${new Date().toLocaleDateString()}<br>
+        ${it.ref ? 'Case / Ref #: <b>' + esc(it.ref) + '</b>' : 'Case / Ref #: ________________'}
+      </div>
+    </div>
+
+    <h3>Submit To</h3>
+    <table class="kv">
+      <tr><td class="k">Company</td><td>${co.name}</td></tr>
+      <tr><td class="k">Phone</td><td>${co.phone}</td></tr>
+      <tr><td class="k">Online</td><td>${co.web}</td></tr>
+    </table>
+
+    <h3>Patient / Requester</h3>
+    <table class="kv">
+      <tr><td class="k">Patient Name</td><td>${esc(p.name) || '&nbsp;'}</td></tr>
+      <tr><td class="k">Parent / Caregiver</td><td>${esc(p.caregiver) || '&nbsp;'}</td></tr>
+      <tr><td class="k">Phone / Email</td><td>${esc([p.phone, p.email].filter(Boolean).join('  /  ')) || '&nbsp;'}</td></tr>
+      <tr><td class="k">Shipping Address</td><td>${esc(p.address) || '&nbsp;'}</td></tr>
+    </table>
+
+    <h3>Device Details</h3>
+    <table class="kv">
+      <tr><td class="k">Product</td><td>${esc(it.device)}</td></tr>
+      ${idRows}
+      <tr><td class="k">Date Applied / Started</td><td>${fmt(it.dateOn)}</td></tr>
+      <tr><td class="k">Date of Failure</td><td>${fmt(it.dateFail)} &nbsp;(worn ${worn} day${worn === 1 ? '' : 's'})</td></tr>
+      ${it.expiry ? '<tr><td class="k">Use-By Date on Box</td><td>' + fmt(it.expiry) + '</td></tr>' : ''}
+    </table>
+
+    <h3>Description of Failure</h3>
+    <div class="desc">${esc(it.problem)}</div>
+
+    <h3>Submission Checklist</h3>
+    <ul class="checklist">${checklist}</ul>
+
+    <div class="siggrid">
+      <div class="sig">Signature</div>
+      <div class="sig">Date</div>
+    </div>
+
+    <div class="foot">
+      This record was prepared by the patient/caregiver to support a product replacement request.
+      Keep a copy for your records and for insurance/supply-count purposes. This is not an official
+      ${omni ? 'Insulet' : 'Dexcom'} document.
+    </div>
+  </div>`;
+  window.print();
+}
+
+/* ---------- Poddy the mascot ---------- */
+function podSVG(mood) {
+  const limb = d => `<path d="${d}" stroke="#9fb8c9" stroke-width="9" fill="none" stroke-linecap="round"/>` +
+                    `<path d="${d}" stroke="#ffffff" stroke-width="5" fill="none" stroke-linecap="round"/>`;
+  const arms = {
+    wave:  limb('M30,74 Q17,80 14,90') + limb('M110,62 Q124,50 121,36'),
+    happy: limb('M30,74 Q17,80 14,90') + limb('M110,74 Q123,80 126,90'),
+    cheer: limb('M30,64 Q17,50 19,36') + limb('M110,64 Q123,50 121,36'),
+    sad:   limb('M32,78 Q22,86 21,94') + limb('M108,78 Q118,86 119,94')
+  };
+  const dotEyes = `<circle cx="56" cy="54" r="4.5" fill="#1c2b36"/><circle cx="84" cy="54" r="4.5" fill="#1c2b36"/>`;
+  const smile = `<path d="M55,66 Q70,78 85,66" stroke="#1c2b36" stroke-width="3.5" fill="none" stroke-linecap="round"/>`;
+  const faces = {
+    wave: dotEyes + smile,
+    happy: dotEyes + smile,
+    cheer: `<path d="M50,55 Q56,47 62,55" stroke="#1c2b36" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+            <path d="M78,55 Q84,47 90,55" stroke="#1c2b36" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+            <path d="M56,64 Q70,83 84,64 Q70,71 56,64 Z" fill="#33566b"/>`,
+    sad: `<path d="M48,45 L60,49" stroke="#1c2b36" stroke-width="3" stroke-linecap="round"/>
+          <path d="M92,45 L80,49" stroke="#1c2b36" stroke-width="3" stroke-linecap="round"/>
+          ${dotEyes}
+          <path d="M56,74 Q70,64 84,74" stroke="#1c2b36" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+          <path d="M53,60 q-4,8 0,11 q5,-3 0,-11" fill="#7ec3e8"/>
+          <g transform="translate(88,33) rotate(30)">
+            <rect x="-15" y="-6.5" width="30" height="13" rx="6.5" fill="#f2c9a2" stroke="#d9a878" stroke-width="1.5"/>
+            <circle cx="-4" cy="0" r="1.3" fill="#c6935f"/><circle cx="0" cy="0" r="1.3" fill="#c6935f"/><circle cx="4" cy="0" r="1.3" fill="#c6935f"/>
+          </g>`
+  };
+  return `<svg viewBox="0 0 140 112" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Poddy the pod mascot">
+    <ellipse cx="70" cy="106" rx="42" ry="5" fill="rgba(16,42,67,.10)"/>
+    <ellipse cx="70" cy="96" rx="54" ry="13" fill="#dcebf5" stroke="#b9cedd" stroke-width="2"/>
+    ${arms[mood] || arms.happy}
+    <path d="M28,96 C28,42 44,24 70,24 C96,24 112,42 112,96 Z" fill="#ffffff" stroke="#b9cedd" stroke-width="2.5"/>
+    <path d="M40,52 C42,38 50,30 60,28" stroke="#e6eff6" stroke-width="5" fill="none" stroke-linecap="round"/>
+    <circle cx="48" cy="64" r="5" fill="#f9cdd2" opacity=".85"/>
+    <circle cx="92" cy="64" r="5" fill="#f9cdd2" opacity=".85"/>
+    ${faces[mood] || faces.happy}
+  </svg>`;
+}
+document.querySelectorAll('[data-pod]').forEach(el => { el.innerHTML = podSVG(el.dataset.pod); });
+
+/* ---------- backup & restore ---------- */
+function flashBackupMsg(text) {
+  const el = $('backupMsg');
+  el.textContent = '✓ ' + text;
+  el.style.display = 'inline';
+  setTimeout(() => el.style.display = 'none', 4000);
+}
+function exportBackup() {
+  const data = {
+    app: 't1d-supply-tracker', version: 1,
+    exported: new Date().toISOString(),
+    patient: JSON.parse(localStorage.getItem(PSTORE) || '{}'),
+    items
+  };
+  download(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }),
+    'T1D-backup-' + todayISO() + '.json');
+  localStorage.setItem('t1d_last_backup', new Date().toISOString());
+  updateBackupNag();
+  flashBackupMsg('Backup saved to your Downloads folder — keep it somewhere safe.');
+}
+function updateBackupNag() {
+  const last = localStorage.getItem('t1d_last_backup');
+  const snooze = localStorage.getItem('t1d_backup_snooze');
+  const stale = !last || (Date.now() - new Date(last).getTime()) > 30 * 86400000;
+  const snoozed = snooze && (Date.now() - new Date(snooze).getTime()) < 7 * 86400000;
+  $('backupNag').style.display = (items.length >= 3 && stale && !snoozed) ? 'flex' : 'none';
+}
+function snoozeNag() {
+  localStorage.setItem('t1d_backup_snooze', new Date().toISOString());
+  updateBackupNag();
+}
+function importBackup(input) {
+  const file = input.files[0];
+  input.value = '';
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    let d;
+    try { d = JSON.parse(reader.result); } catch (e) { d = null; }
+    const valid = d && d.app === 't1d-supply-tracker' && Array.isArray(d.items) &&
+      d.items.every(x => x && x.id && x.device && x.dateOn);
+    if (!valid) {
+      alert("That file doesn't look like a T1D tracker backup — nothing was changed.");
+      return;
+    }
+    const when = d.exported ? fmt(d.exported.slice(0, 10)) : 'an unknown date';
+    if (!confirm('Replace the current log (' + items.length + ' device' + (items.length === 1 ? '' : 's') +
+      ') with this backup?\n\nBackup from ' + when + ' with ' + d.items.length + ' device' + (d.items.length === 1 ? '' : 's') + '.')) return;
+    items = d.items;
+    persist();
+    if (d.patient && typeof d.patient === 'object') localStorage.setItem(PSTORE, JSON.stringify(d.patient));
+    loadPatient();
+    render();
+    flashBackupMsg('Backup restored — ' + items.length + ' devices loaded.');
+  };
+  reader.readAsText(file);
+}
+
+/* ---------- onboarding tour ---------- */
+const TOUR = [
+  { mood: 'wave', title: "Hi, I'm Poddy!", body: "Welcome! This app keeps track of your <b>Dexcom sensors</b> and <b>Omnipods</b> — so when one dies early, you have everything you need to get a <b>free replacement</b> from the company." },
+  { mood: 'happy', title: 'Log every device you put on', body: "Fill in <b>Your info</b> once. Then, at every sensor or pod change, take 30 seconds to log the new device. That way the serial &amp; lot numbers are saved <b>before the box hits the trash</b> — nobody knows if it will fail on day 1 or day 8." },
+  { mood: 'sad', title: 'If one fails early', body: "Hit <b>&#10007; It failed</b> and write down what happened. Then print the claim form or download the Excel log, and call or go online — the phone numbers for Dexcom and Insulet are right at the top of the app." },
+  { mood: 'cheer', title: 'Your data stays with you', body: "Everything is saved on <b>this computer only</b> — nothing goes online. Use <b>Save backup file</b> (bottom of the page) once in a while so your log can never be lost. That's it — you've got this!" }
+];
+let tourIdx = 0;
+function startTour() {
+  tourIdx = 0;
+  showTourStep();
+  $('tour').classList.add('open');
+}
+function showTourStep() {
+  const s = TOUR[tourIdx];
+  $('tourPod').innerHTML = podSVG(s.mood);
+  $('tourTitle').textContent = s.title;
+  $('tourBody').innerHTML = s.body;
+  $('tourBack').style.visibility = tourIdx ? 'visible' : 'hidden';
+  $('tourNext').textContent = tourIdx === TOUR.length - 1 ? "Let's go!" : 'Next';
+  $('tourDots').innerHTML = TOUR.map((_, i) => `<span class="${i === tourIdx ? 'on' : ''}"></span>`).join('');
+}
+function tourStep(dir) {
+  if (tourIdx + dir >= TOUR.length) { endTour(); return; }
+  tourIdx = Math.max(0, tourIdx + dir);
+  showTourStep();
+}
+function endTour() {
+  $('tour').classList.remove('open');
+  localStorage.setItem('t1d_tour_done', '1');
+}
+
+/* ---------- init ---------- */
+loadPatient();
+resetForm();
+render();
+if (!localStorage.getItem('t1d_tour_done')) startTour();
+
+updateBackupNag();
+
+/* ---------- offline support (PWA) ---------- */
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+/* Ask the browser to protect this site's storage from automatic eviction. */
+if (navigator.storage && navigator.storage.persist) {
+  navigator.storage.persist().catch(() => {});
+}
+</script>
+</body>
+</html>

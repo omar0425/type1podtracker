@@ -1,0 +1,15 @@
+{
+  "name": "T1D Supply Failure Tracker",
+  "short_name": "T1D Tracker",
+  "description": "Log Dexcom sensors & Omnipods, track early failures, and build replacement claims.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f2f6f9",
+  "theme_color": "#0a4266",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

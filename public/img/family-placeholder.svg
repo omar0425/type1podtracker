@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300">
+  <rect width="400" height="300" fill="#e8f1f8"/>
+  <g transform="translate(130,70) scale(1.0)">
+    <ellipse cx="70" cy="96" rx="54" ry="13" fill="#dcebf5" stroke="#b9cedd" stroke-width="2"/>
+    <path d="M28,96 C28,42 44,24 70,24 C96,24 112,42 112,96 Z" fill="#ffffff" stroke="#b9cedd" stroke-width="2.5"/>
+    <circle cx="48" cy="64" r="5" fill="#f9cdd2" opacity=".85"/><circle cx="92" cy="64" r="5" fill="#f9cdd2" opacity=".85"/>
+    <circle cx="56" cy="54" r="4.5" fill="#1c2b36"/><circle cx="84" cy="54" r="4.5" fill="#1c2b36"/>
+    <path d="M55,66 Q70,78 85,66" stroke="#1c2b36" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+  </g>
+  <text x="200" y="230" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="15" fill="#5b7182">Family photo coming soon</text>
+  <text x="200" y="252" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="12" fill="#8aa2b5">(replace public/img/family.jpg)</text>
+</svg>

@@ -1,0 +1,7 @@
+node_modules/
+data/
+tests/downloads/
+tests/shots/
+tests/shots2/
+tests/shots-site/
+tests/video-out/
