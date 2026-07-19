@@ -38,8 +38,13 @@ npm start          # http://localhost:3000
      `https://YOUR-URL/api/stats?key=YOUR_ADMIN_KEY` (daily page views +
      unique visitors; privacy-safe, no raw IPs stored).
    - `DATA_DIR=/data` — only if you attach a **Volume** (Storage → Add Volume,
-     mount at `/data`) so contact messages survive redeploys. Without a volume
-     they reset on each deploy.
+     mount at `/data`) so contact messages & visitor stats survive redeploys.
+     Without a volume they reset on each deploy.
+   - `RESEND_API_KEY` + `NOTIFY_EMAIL` (optional) — get emailed whenever someone
+     submits the contact form. Sign up free at resend.com, create an API key,
+     set `NOTIFY_EMAIL` to your address. Without these, messages simply wait in
+     the `/api/messages` inbox. (`NOTIFY_FROM` optionally overrides the sender
+     once you verify a domain with Resend.)
 
 ## Your photo
 

@@ -53,15 +53,37 @@ app.post('/api/contact', (req, res) => {
   if (!device || !message) return res.status(400).json({ ok: false, error: 'Please fill in the device name and your message.' });
   let list = [];
   try { list = JSON.parse(fs.readFileSync(MSG_FILE, 'utf8')); } catch (e) {}
-  list.push({
+  const entry = {
     at: new Date().toISOString(),
     name: String(name || '').slice(0, 120),
     email: String(email || '').slice(0, 120),
     device: String(device).slice(0, 120),
     message: String(message).slice(0, 2000)
-  });
+  };
+  list.push(entry);
   fs.writeFileSync(MSG_FILE, JSON.stringify(list, null, 2));
   res.json({ ok: true });
+
+  // Optional email notification via Resend (resend.com — free tier).
+  // Activates when RESEND_API_KEY and NOTIFY_EMAIL are set; otherwise messages
+  // just wait in the admin inbox at /api/messages.
+  if (process.env.RESEND_API_KEY && process.env.NOTIFY_EMAIL) {
+    fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + process.env.RESEND_API_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        from: process.env.NOTIFY_FROM || 'T1D Tracker <onboarding@resend.dev>',
+        to: [process.env.NOTIFY_EMAIL],
+        subject: 'New device request: ' + entry.device,
+        text: 'Device: ' + entry.device + '\nFrom: ' + (entry.name || 'anonymous') +
+          (entry.email ? ' <' + entry.email + '>' : '') + '\nAt: ' + entry.at +
+          '\n\n' + entry.message
+      })
+    }).catch(err => console.error('notify email failed:', err.message));
+  }
 });
 
 // Owner-only: read submitted requests at /api/messages?key=YOUR_ADMIN_KEY
