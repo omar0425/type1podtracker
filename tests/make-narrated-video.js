@@ -43,19 +43,46 @@ const pause = ms => new Promise(r => setTimeout(r, ms));
 const ffprobe = f => parseFloat(execFileSync('ffprobe',
   ['-v', 'quiet', '-show_entries', 'format=duration', '-of', 'csv=p=0', f], { encoding: 'utf8' }));
 
+// ---- TTS providers ----
+// ElevenLabs is used automatically when ELEVENLABS_API_KEY is set (best quality);
+// otherwise falls back to the free Edge neural voice. Optional: ELEVENLABS_VOICE_ID
+// to pick any voice from the ElevenLabs library (default: Rachel).
+const EL_KEY = process.env.ELEVENLABS_API_KEY;
+const EL_VOICE = process.env.ELEVENLABS_VOICE_ID || '21m00Tcm4TlvDq8ikWAM'; // Rachel
+
+async function synthElevenLabs(text, outFile) {
+  const res = await fetch('https://api.elevenlabs.io/v1/text-to-speech/' + EL_VOICE, {
+    method: 'POST',
+    headers: { 'xi-api-key': EL_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      text,
+      model_id: 'eleven_multilingual_v2',
+      voice_settings: { stability: 0.5, similarity_boost: 0.75 }
+    })
+  });
+  if (!res.ok) throw new Error('ElevenLabs API error ' + res.status + ': ' + (await res.text()).slice(0, 300));
+  fs.writeFileSync(outFile, Buffer.from(await res.arrayBuffer()));
+}
+
+async function synthEdge(text, dir) {
+  const tts = new MsEdgeTTS();
+  await tts.setMetadata(VOICE, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
+  await tts.toFile(dir, text);
+}
+
 (async () => {
   // ---- 1. narration clips ----
-  console.log('Generating narration (' + VOICE + ')...');
+  console.log('Generating narration (' + (EL_KEY ? 'ElevenLabs voice ' + EL_VOICE : VOICE) + ')...');
   for (const s of SEGMENTS) {
     const dir = path.join(VO_DIR, s.id);
     fs.mkdirSync(dir, { recursive: true });
-    const tts = new MsEdgeTTS();
-    await tts.setMetadata(VOICE, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
-    await tts.toFile(dir, s.nar);
     s.file = path.join(dir, 'audio.mp3');
+    if (EL_KEY) await synthElevenLabs(s.nar, s.file);
+    else await synthEdge(s.nar, dir);
     s.dur = ffprobe(s.file);
     console.log('  ' + s.id + ': ' + s.dur.toFixed(1) + 's');
   }
+  if (process.argv.includes('--tts-only')) { console.log('TTS-only run complete.'); return; }
 
   // ---- 2. record the demo with matched pacing ----
   console.log('Recording demo...');
