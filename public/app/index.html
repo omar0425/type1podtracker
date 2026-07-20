@@ -165,7 +165,9 @@
   select.pillselect.submitted { background: #fff7e0; color: var(--amber); }
   select.pillselect.replaced { background: #e3f4e8; color: var(--green); }
   select.pillselect.denied { background: #ececec; color: #555; }
-  .scrollhint { display: none; }
+  #refDetails summary { cursor: pointer; }
+  #refDetails summary h2 { display: inline-flex; margin-bottom: 0; }
+  #refDetails[open] summary { margin-bottom: 10px; }
   .pill.in-use { background: #e1eefa; color: var(--blue-dark); }
   .pill.completed { background: #ececec; color: #555; }
   .pill.not-submitted { background: #fdecea; color: var(--red); }
@@ -188,14 +190,28 @@
     align-items: flex-start; justify-content: center; padding: 40px 16px;
     overflow-y: auto;
   }
-  /* Mobile: bigger tap targets + tell people the tables scroll sideways */
+  /* Mobile: tables become stacked cards — no sideways scrolling, big buttons */
   @media (max-width: 720px) {
-    .btn.small { padding: 10px 12px; font-size: .85rem; }
+    .btn.small { padding: 11px 12px; font-size: .88rem; }
     select.pillselect { padding: 8px 10px; }
-    .scrollhint {
-      display: block; font-size: .78rem; color: var(--muted);
-      margin-bottom: 6px;
+    .hidesm { display: none; }
+    table.inv thead { display: none; }
+    table.inv, table.inv tbody, table.inv tr, table.inv td { display: block; width: 100%; }
+    table.inv tr {
+      border: 1px solid var(--line); border-radius: 12px;
+      padding: 12px 14px; margin-bottom: 12px;
+      background: #fff; box-shadow: 0 1px 2px rgba(16,42,67,.06);
     }
+    table.inv td { border: none; padding: 2px 0; white-space: normal; }
+    table.inv tr:hover td { background: none; }
+    table.inv td:empty { display: none; }
+    table.inv td[data-label]::before {
+      content: attr(data-label) ":  ";
+      font-weight: 600; color: var(--muted); font-size: .8rem;
+    }
+    table.inv td.devname { font-size: 1.05rem; padding-bottom: 4px; border-bottom: 1px solid var(--line); margin-bottom: 6px; }
+    table.inv td.actions { display: flex; gap: 8px; flex-wrap: wrap; padding-top: 12px; }
+    table.inv td.actions .btn { flex: 1 1 40%; margin-right: 0; }
   }
   #overlay.open { display: flex; }
   .modal {
@@ -275,7 +291,7 @@
 
 <header class="app">
   <h1><span class="cross">&#10010;</span> T1D Supply Failure Tracker</h1>
-  <p>Log every Dexcom sensor &amp; Omnipod when you put it on. If one fails early, mark it failed &mdash; then export to Excel or print a claim form for the replacement request. All data stays on this computer.</p>
+  <p>Log every Dexcom sensor &amp; Omnipod when you put it on.<span class="hidesm"> If one fails early, mark it failed &mdash; then export to Excel or print a claim form for the replacement request. All data stays on this computer.</span></p>
   <button class="tourbtn" onclick="startTour()">&#127891; Show me around</button>
   <div class="mascot" aria-hidden="true">
     <div class="bubble">Hi, I'm <b>Poddy</b>! Log your gear and I'll remember all the numbers for you.</div>
@@ -293,7 +309,8 @@
 
   <!-- Quick reference -->
   <section class="card">
-    <h2>&#128222; What each company asks for</h2>
+    <details id="refDetails">
+    <summary><h2>&#128222; What each company asks for</h2></summary>
     <div class="refgrid">
       <div class="refbox dex">
         <strong class="title">Dexcom (G6 / G7 sensors &amp; transmitters)</strong>
@@ -312,6 +329,7 @@
         </ul>
       </div>
     </div>
+    </details>
   </section>
 
   <!-- Family / contact info -->
@@ -381,7 +399,6 @@
   <section class="card">
     <h2><span class="step">3</span> Currently on the body</h2>
     <p class="sub">When one fails, hit <b>&#10007; It failed</b> and describe what happened. If it lasts its full life, hit <b>&#10003; Worn full life</b> to archive it.</p>
-    <div class="scrollhint">&#8596; Swipe the table sideways to reach the buttons</div>
     <div class="tablewrap">
       <table class="inv">
         <thead>
@@ -398,7 +415,6 @@
   <!-- Failure log / history -->
   <section class="card">
     <h2><span class="step">4</span> Failure log &amp; history</h2>
-    <div class="scrollhint">&#8596; Swipe the table sideways to reach the buttons</div>
     <div class="tablewrap">
       <table class="inv">
         <thead>
@@ -722,10 +738,10 @@ function render() {
     const changeBy = rated ? addDays(it.dateOn, rated) : '';
     return `<tr>
       <td class="devname">${esc(it.device)}</td>
-      <td>${idCell(it)}</td>
-      <td>${fmt(it.dateOn)}</td>
-      <td><span class="daycount ${over ? 'over' : ''}">Day ${worn}${rated ? ' of ' + rated : ''}</span></td>
-      <td>${changeBy ? fmt(changeBy) + (over ? ' <span class="duesoon">(past due)</span>' : '') : ''}</td>
+      <td data-label="ID">${idCell(it)}</td>
+      <td data-label="Put on">${fmt(it.dateOn)}</td>
+      <td data-label="Wear"><span class="daycount ${over ? 'over' : ''}">Day ${worn}${rated ? ' of ' + rated : ''}</span></td>
+      <td${changeBy ? ' data-label="Change by"' : ''}>${changeBy ? fmt(changeBy) + (over ? ' <span class="duesoon">(past due)</span>' : '') : ''}</td>
       <td class="actions">
         <button class="btn small danger" onclick="openFailModal('${it.id}')">&#10007; It failed</button>
         <button class="btn small ok" onclick="completeItem('${it.id}')">&#10003; Worn full life</button>
@@ -741,10 +757,10 @@ function render() {
     if (it.status === 'Completed OK') {
       return `<tr>
         <td class="devname">${esc(it.device)}</td>
-        <td>${idCell(it)}</td>
-        <td>${fmt(it.dateOn)}</td>
-        <td>&mdash;</td>
-        <td>${daysWorn(it)}</td>
+        <td data-label="ID">${idCell(it)}</td>
+        <td data-label="Put on">${fmt(it.dateOn)}</td>
+        <td class="hidesm">&mdash;</td>
+        <td data-label="Days worn">${daysWorn(it)}</td>
         <td><span class="pill completed">Completed OK</span></td>
         <td></td>
         <td class="actions">
@@ -756,16 +772,16 @@ function render() {
     const pillClass = { 'Not submitted': 'not-submitted', 'Submitted': 'submitted', 'Replaced': 'replaced', 'Denied': 'denied' }[it.status] || 'not-submitted';
     return `<tr>
       <td class="devname">${esc(it.device)}</td>
-      <td>${idCell(it)}</td>
-      <td>${fmt(it.dateOn)}</td>
-      <td>${fmt(it.dateFail)}</td>
-      <td>${daysWorn(it)}</td>
-      <td>
+      <td data-label="ID">${idCell(it)}</td>
+      <td data-label="Put on">${fmt(it.dateOn)}</td>
+      <td data-label="Failed">${fmt(it.dateFail)}</td>
+      <td data-label="Days worn">${daysWorn(it)}</td>
+      <td data-label="Status">
         <select class="pillselect ${pillClass}" onchange="setStatus('${it.id}', this.value)" title="Click to update the claim status">
           ${FAIL_STATUSES.map(s => `<option ${s === it.status ? 'selected' : ''}>${s}</option>`).join('')}
         </select>
       </td>
-      <td class="mono">${esc(it.ref)}</td>
+      <td${it.ref ? ' data-label="Ref #"' : ''} class="mono">${esc(it.ref)}</td>
       <td class="actions">
         <button class="btn small" onclick="printClaim('${it.id}')">&#128424; Print form</button>
         <button class="btn small secondary" onclick="openFailModal('${it.id}')">Edit</button>
@@ -1120,6 +1136,8 @@ function endTour() {
 loadPatient();
 resetForm();
 render();
+// Reference card: open on desktop, collapsed on phones to get "log a device" up top
+if (window.innerWidth > 720) $('refDetails').open = true;
 if (!localStorage.getItem('t1d_tour_done')) startTour();
 
 updateBackupNag();

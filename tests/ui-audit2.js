@@ -13,7 +13,7 @@ const overlap = (a, b) => !(a.right <= b.left + 1 || b.right <= a.left + 1 || a.
   const browser = await chromium.launch();
   const page = await browser.newPage();
   page.on('dialog', d => d.accept());
-  const iso = d => d.toISOString().slice(0, 10);
+  const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   const daysAgo = n => { const d = new Date(); d.setDate(d.getDate() - n); return iso(d); };
 
   await page.goto(APP);

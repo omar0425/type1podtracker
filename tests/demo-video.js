@@ -18,7 +18,7 @@ const pause = ms => new Promise(r => setTimeout(r, ms));
   const page = await ctx.newPage();
   page.on('dialog', d => d.accept());
 
-  const iso = d => d.toISOString().slice(0, 10);
+  const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   const daysAgo = n => { const d = new Date(); d.setDate(d.getDate() - n); return iso(d); };
   const type = async (sel, text) => { await page.click(sel); await page.type(sel, text, { delay: 45 }); };
 
