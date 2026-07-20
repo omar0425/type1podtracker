@@ -293,6 +293,7 @@
   <h1><span class="cross">&#10010;</span> T1D Supply Failure Tracker</h1>
   <p>Log every Dexcom sensor &amp; Omnipod when you put it on.<span class="hidesm"> If one fails early, mark it failed &mdash; then export to Excel or print a claim form for the replacement request. All data stays on this computer.</span></p>
   <button class="tourbtn" onclick="startTour()">&#127891; Show me around</button>
+  <button class="tourbtn" id="installBtn" style="display:none" onclick="installApp()">&#128241; Install this app</button>
   <div class="mascot" aria-hidden="true">
     <div class="bubble">Hi, I'm <b>Poddy</b>! Log your gear and I'll remember all the numbers for you.</div>
     <span data-pod="wave"></span>
@@ -1150,6 +1151,22 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
 if (navigator.storage && navigator.storage.persist) {
   navigator.storage.persist().catch(() => {});
 }
+
+/* One-click install (Chrome / Edge / Android fire beforeinstallprompt). */
+let installPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  installPrompt = e;
+  $('installBtn').style.display = 'inline-block';
+});
+async function installApp() {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  await installPrompt.userChoice.catch(() => {});
+  installPrompt = null;
+  $('installBtn').style.display = 'none';
+}
+window.addEventListener('appinstalled', () => { $('installBtn').style.display = 'none'; });
 </script>
 </body>
 </html>
