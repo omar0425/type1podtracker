@@ -239,6 +239,40 @@ function check(name, cond, detail) {
     dialogs.length === nDialogs + 1 && /doesn't look like/i.test(dialogs.at(-1).msg), JSON.stringify(dialogs.at(-1)));
   check('Invalid restore changed nothing', await page.evaluate(() => items.length) === beforeCount);
 
+  /* ---------- 15ab. auto-save to a real file ---------- */
+  check('Auto-save setup offered (Chromium has the file API)', await page.locator('#linkFileBtn').isVisible());
+  await page.evaluate(() => {
+    window.__fileData = null;
+    window.showSaveFilePicker = async () => ({
+      name: 'T1D-log.json',
+      queryPermission: async () => 'granted',
+      requestPermission: async () => 'granted',
+      createWritable: async () => ({ write: async d => { window.__fileData = d; }, close: async () => {} }),
+      getFile: async () => new Blob([window.__fileData || '{}'])
+    });
+  });
+  await page.click('#linkFileBtn');
+  await page.waitForTimeout(400);
+  check('Linking writes the whole log to the file immediately', await page.evaluate(() => {
+    try { const d = JSON.parse(window.__fileData); return d.app === 't1d-supply-tracker' && d.items.length === items.length; }
+    catch (e) { return false; }
+  }));
+  check('Status shows the linked filename', (await page.locator('#fileStatus').innerText()).includes('Auto-saving to T1D-log.json'));
+  await page.evaluate(() => { items[0].ref = 'AUTOSAVE-TEST'; persist(); });
+  await page.waitForTimeout(1300);
+  check('Data changes auto-save to the file (debounced)',
+    await page.evaluate(() => (window.__fileData || '').includes('AUTOSAVE-TEST')));
+  // disaster recovery: browser data wiped, file intact
+  const rec = await page.evaluate(async () => {
+    const before = items.length;
+    items = []; localStorage.removeItem('t1d_items'); render();
+    await maybeRecoverFromFile(); // confirm dialog auto-accepted
+    return { before, after: items.length };
+  });
+  check('Cleared browser + linked file -> full recovery', rec.after === rec.before && rec.after > 0, JSON.stringify(rec));
+  await page.click('#unlinkFileBtn'); // confirm auto-accepted
+  check('Stop auto-save returns to setup state', await page.locator('#linkFileBtn').isVisible());
+
   /* ---------- 15b. date-range export ---------- */
   // from > to -> alert
   nDialogs = dialogs.length;

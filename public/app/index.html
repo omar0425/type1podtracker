@@ -458,6 +458,34 @@
       <input type="file" id="restoreFile" accept=".json,application/json" style="display:none" onchange="importBackup(this)">
       <span id="backupMsg" style="color:var(--green);font-size:.85rem;display:none"></span>
     </div>
+
+    <!-- Auto-save to a real file (Chrome/Edge on computers) -->
+    <div id="fileLinkWrap" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line)">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <button class="btn green" id="linkFileBtn" onclick="linkFile()">&#128279; Turn on auto-save to a file</button>
+        <button class="btn secondary" id="unlinkFileBtn" style="display:none" onclick="unlinkFile()">Stop auto-save</button>
+        <span id="fileStatus" class="hint"></span>
+      </div>
+      <div id="reconnectBar" class="warn" style="margin-top:10px">
+        &#128279; Your auto-save file needs a quick reconnect (browsers ask again after a restart).
+        <button class="btn small" onclick="reconnectFile()" style="margin-left:8px">Reconnect</button>
+      </div>
+      <details style="margin-top:12px">
+        <summary style="cursor:pointer;font-size:.9rem;font-weight:600;color:var(--blue-dark)">&#10067; How does auto-save to a file work?</summary>
+        <div style="font-size:.86rem;margin-top:10px;line-height:1.6">
+          <p>Normally your log lives <i>inside</i> the browser, where clearing browsing data can delete it. Auto-save keeps a live copy in a <b>real file on your computer</b> — one the browser can never delete. Every change you make is written to it automatically.</p>
+          <ol style="margin:8px 0 0 20px">
+            <li>Click <b>&#128279; Turn on auto-save to a file</b> above.</li>
+            <li>A save window opens. Choose where to keep the file &mdash; your <b>Documents</b> folder is perfect. <span class="hint">(Pro tip: picking a OneDrive or Google Drive folder gives you free cloud backup too.)</span></li>
+            <li>Click <b>Save</b>. That's it &mdash; look for the green &#10003; "Auto-saving to T1D-log.json".</li>
+            <li>When you reopen the app after restarting the browser, it may ask you to hit <b>Reconnect</b> once &mdash; that's the browser double-checking permission, not a problem.</li>
+          </ol>
+          <p style="margin-top:8px"><b>If disaster strikes</b> (browser data cleared, log looks empty): open the app, click <b>Reconnect</b>, and it will offer to bring everything back from your file.</p>
+          <p style="margin-top:8px" class="hint">Works in Chrome and Edge on computers. On phones, iPads, Safari, and Firefox this feature isn't available &mdash; use <b>Save backup file</b> there instead.</p>
+        </div>
+      </details>
+    </div>
+
     <details style="margin-top:14px">
       <summary style="cursor:pointer;font-size:.9rem;font-weight:600;color:var(--blue-dark)">&#128737;&#65039; Tips: stop your browser from deleting the log</summary>
       <div style="font-size:.86rem;margin-top:10px;line-height:1.6">
@@ -576,6 +604,7 @@ function savePatient() {
   localStorage.setItem(PSTORE, JSON.stringify(getPatient()));
   $('patientSaved').style.display = 'inline';
   setTimeout(() => $('patientSaved').style.display = 'none', 2500);
+  scheduleFileSave();
 }
 
 /* ---------- helpers ---------- */
@@ -654,7 +683,7 @@ function deleteItem(id) {
   items = items.filter(x => x.id !== id);
   persist(); render();
 }
-function persist() { localStorage.setItem(STORE, JSON.stringify(items)); updateBackupNag(); }
+function persist() { localStorage.setItem(STORE, JSON.stringify(items)); updateBackupNag(); scheduleFileSave(); }
 
 /* ---------- mark failed (modal) ---------- */
 function openFailModal(id) {
@@ -1050,14 +1079,16 @@ function flashBackupMsg(text) {
   el.style.display = 'inline';
   setTimeout(() => el.style.display = 'none', 4000);
 }
-function exportBackup() {
-  const data = {
+function backupData() {
+  return {
     app: 't1d-supply-tracker', version: 1,
     exported: new Date().toISOString(),
     patient: JSON.parse(localStorage.getItem(PSTORE) || '{}'),
     items
   };
-  download(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }),
+}
+function exportBackup() {
+  download(new Blob([JSON.stringify(backupData(), null, 2)], { type: 'application/json' }),
     'T1D-backup-' + todayISO() + '.json');
   localStorage.setItem('t1d_last_backup', new Date().toISOString());
   updateBackupNag();
@@ -1101,6 +1132,107 @@ function importBackup(input) {
   reader.readAsText(file);
 }
 
+/* ---------- auto-save to a real file (File System Access API) ---------- */
+const fileApiOk = 'showSaveFilePicker' in window;
+let fileHandle = null, fileSaveTimer = null, lastFileSave = null;
+
+// Tiny IndexedDB store — file handles can't live in localStorage.
+const idb = {
+  _dbp: null,
+  _db() {
+    if (!this._dbp) this._dbp = new Promise((res, rej) => {
+      const r = indexedDB.open('t1d-file', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('kv');
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    });
+    return this._dbp;
+  },
+  async get(k) { const db = await this._db(); return new Promise((res, rej) => { const t = db.transaction('kv').objectStore('kv').get(k); t.onsuccess = () => res(t.result); t.onerror = () => rej(t.error); }); },
+  async set(k, v) { const db = await this._db(); return new Promise((res, rej) => { const t = db.transaction('kv', 'readwrite').objectStore('kv').put(v, k); t.onsuccess = () => res(); t.onerror = () => rej(t.error); }); },
+  async del(k) { const db = await this._db(); return new Promise((res, rej) => { const t = db.transaction('kv', 'readwrite').objectStore('kv').delete(k); t.onsuccess = () => res(); t.onerror = () => rej(t.error); }); }
+};
+
+async function linkFile() {
+  try {
+    fileHandle = await showSaveFilePicker({
+      suggestedName: 'T1D-log.json',
+      types: [{ description: 'T1D Tracker log', accept: { 'application/json': ['.json'] } }]
+    });
+  } catch (e) { return; } // user cancelled the picker
+  try { await idb.set('handle', fileHandle); } catch (e) {}
+  await writeLinkedFile();
+}
+async function writeLinkedFile() {
+  if (!fileHandle) return;
+  try {
+    const w = await fileHandle.createWritable();
+    await w.write(JSON.stringify(backupData(), null, 2));
+    await w.close();
+    lastFileSave = new Date();
+    updateFileUI();
+  } catch (e) { updateFileUI(true); }
+}
+function scheduleFileSave() {
+  if (!fileHandle) return;
+  clearTimeout(fileSaveTimer);
+  fileSaveTimer = setTimeout(writeLinkedFile, 800);
+}
+async function maybeRecoverFromFile() {
+  if (items.length || !fileHandle) return; // local data exists — the file is just a mirror
+  try {
+    const f = await fileHandle.getFile();
+    const d = JSON.parse(await f.text());
+    if (d && d.app === 't1d-supply-tracker' && Array.isArray(d.items) && d.items.length &&
+        confirm('This browser has no log data, but your auto-save file has ' + d.items.length +
+          ' device(s) in it. Restore your log from the file?')) {
+      items = d.items;
+      localStorage.setItem(STORE, JSON.stringify(items));
+      if (d.patient && typeof d.patient === 'object') localStorage.setItem(PSTORE, JSON.stringify(d.patient));
+      loadPatient(); render();
+      flashBackupMsg('Log restored from your auto-save file — ' + items.length + ' devices loaded.');
+    }
+  } catch (e) {}
+}
+async function reconnectFile() {
+  if (!fileHandle) return;
+  try {
+    const perm = fileHandle.requestPermission ? await fileHandle.requestPermission({ mode: 'readwrite' }) : 'granted';
+    if (perm !== 'granted') return;
+  } catch (e) { return; }
+  $('reconnectBar').style.display = 'none';
+  await maybeRecoverFromFile();
+  await writeLinkedFile();
+}
+function unlinkFile() {
+  if (!confirm('Stop auto-saving to the file? (The file itself stays right where it is — this only stops future saves.)')) return;
+  fileHandle = null; lastFileSave = null;
+  idb.del('handle').catch(() => {});
+  updateFileUI();
+}
+function updateFileUI(err) {
+  if (!fileApiOk) return;
+  const linked = !!fileHandle;
+  $('linkFileBtn').style.display = linked ? 'none' : '';
+  $('unlinkFileBtn').style.display = linked ? '' : 'none';
+  $('fileStatus').textContent = !linked
+    ? 'Not on yet — your log lives only inside this browser.'
+    : err
+      ? '⚠️ Could not write to ' + fileHandle.name + ' — click Reconnect, or turn auto-save on again.'
+      : '✓ Auto-saving to ' + fileHandle.name + (lastFileSave ? '  (last saved ' + lastFileSave.toLocaleTimeString() + ')' : '');
+}
+async function initFileLink() {
+  $('reconnectBar').style.display = 'none';
+  if (!fileApiOk) { $('fileLinkWrap').style.display = 'none'; return; }
+  try { fileHandle = (await idb.get('handle')) || null; } catch (e) { fileHandle = null; }
+  updateFileUI();
+  if (!fileHandle) return;
+  let perm = 'granted';
+  try { if (fileHandle.queryPermission) perm = await fileHandle.queryPermission({ mode: 'readwrite' }); } catch (e) {}
+  if (perm === 'granted') { await maybeRecoverFromFile(); scheduleFileSave(); }
+  else { $('reconnectBar').style.display = ''; }
+}
+
 /* ---------- onboarding tour ---------- */
 const TOUR = [
   { mood: 'wave', title: "Hi, I'm Poddy!", body: "Welcome! This app keeps track of your <b>Dexcom sensors</b> and <b>Omnipods</b> — so when one dies early, you have everything you need to get a <b>free replacement</b> from the company." },
@@ -1139,6 +1271,7 @@ resetForm();
 render();
 // Reference card: open on desktop, collapsed on phones to get "log a device" up top
 if (window.innerWidth > 720) $('refDetails').open = true;
+initFileLink();
 if (!localStorage.getItem('t1d_tour_done')) startTour();
 
 updateBackupNag();
